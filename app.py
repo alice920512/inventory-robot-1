@@ -14,8 +14,8 @@ except Exception:
     st.error("⚠️ 系統找不到 API Key。")
     st.stop()
 genai.configure(api_key=GOOGLE_API_KEY)
-# 使用比較大眾版/最新版的模型，因為 2.0 遇到了 limit 0，切換到最新的 Gemini 3 系列測試
-model = genai.GenerativeModel('gemini-3-flash-preview')
+# 使用比較大眾版/最新版的模型，因為 2.0 遇到了 limit 0，切換到最新的 Gemini 3.1 Flash Lite 測試
+model = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
 
 default_file_path = "/Users/alice/Downloads/TW Supply status report_dac_0331 (1).xlsx"
 
