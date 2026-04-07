@@ -18,7 +18,7 @@ except Exception:
     st.error("⚠️ 系統找不到 API Key。如果你部署在雲端，請到 Streamlit 儀表板設定 Secrets！")
     st.stop()
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-2.5-flash')
+model = genai.GenerativeModel('gemini-2.0-flash')
 
 default_file_path = "/Users/alice/Downloads/TW Supply status report_dac_0331 (1).xlsx"
 
