@@ -31,10 +31,34 @@ def load_data(file_context):
         st.sidebar.error(f"⚠️ 讀出 Excel 檔案時發生錯誤：{e}")
         return pd.DataFrame()
 
-def log_query(query):
-    # 紀錄使用者的搜尋問題
+def log_query(query, df):
+    # 將整句口語提煉成「熱門關鍵字組合」(例如：Ariel 庫存)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    new_row = pd.DataFrame({"Timestamp": [timestamp], "Query": [query]})
+    
+    keyword = query.strip()
+    if len(keyword) > 6:
+        # 若是很長的句子，嘗試抓出他提到的商品品牌或類別
+        found = False
+        if not df.empty and 'Brand' in df.columns:
+            for b in df['Brand'].dropna().unique():
+                if str(b).lower() in keyword.lower() and str(b).strip() != "":
+                    keyword = f"{b} 庫存"
+                    found = True
+                    break
+        if not found and not df.empty and 'Category' in df.columns:
+            for c in df['Category'].dropna().unique():
+                if str(c).lower() in keyword.lower() and str(c).strip() != "":
+                    keyword = f"{c} 庫存"
+                    found = True
+                    break
+        if not found:
+            keyword = f"{keyword[:6]}... 庫存"
+    else:
+        # 如果一開始就很短 (例如使用者只打了 "牙膏")
+        if "庫存" not in keyword:
+            keyword = f"{keyword} 庫存"
+
+    new_row = pd.DataFrame({"Timestamp": [timestamp], "Query": [keyword]})
     if not os.path.exists(LOG_FILE):
         new_row.to_csv(LOG_FILE, index=False)
     else:
@@ -183,7 +207,7 @@ with tab2:
 
     if prompt := st.chat_input("🔍 請輸入您的指令 (例如告訴我 Ariel 缺貨嗎)..."):
         # 紀錄至熱門搜尋
-        log_query(prompt)
+        log_query(prompt, df)
         
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user", avatar="👤"):
