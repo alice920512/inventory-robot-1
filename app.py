@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import google.generativeai as genai
+from datetime import datetime
 
 st.set_page_config(page_title="📦 企業級智能庫存系統 (戰情室版)", page_icon="✨", layout="wide")
 st.title("✨ 企業級 AI 庫存戰情室")
@@ -18,6 +19,7 @@ genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
 
 default_file_path = "/Users/alice/Downloads/TW Supply status report_dac_0331 (1).xlsx"
+LOG_FILE = "query_logs.csv"
 
 @st.cache_data
 def load_data(file_context):
@@ -26,10 +28,32 @@ def load_data(file_context):
         df = df.dropna(how='all')
         return df
     except Exception as e:
-        st.sidebar.error(f"⚠️ 讀取 Excel 檔案時發生錯誤：{e}")
+        st.sidebar.error(f"⚠️ 讀出 Excel 檔案時發生錯誤：{e}")
         return pd.DataFrame()
 
+def log_query(query):
+    # 紀錄使用者的搜尋問題
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    new_row = pd.DataFrame({"Timestamp": [timestamp], "Query": [query]})
+    if not os.path.exists(LOG_FILE):
+        new_row.to_csv(LOG_FILE, index=False)
+    else:
+        new_row.to_csv(LOG_FILE, mode='a', header=False, index=False)
+
+def get_hot_queries():
+    # 計算今日的最熱門搜尋
+    if os.path.exists(LOG_FILE):
+        logs = pd.read_csv(LOG_FILE)
+        today = datetime.now().strftime("%Y-%m-%d")
+        today_logs = logs[logs['Timestamp'].astype(str).str.startswith(today, na=False)]
+        if not today_logs.empty:
+            hot = today_logs['Query'].value_counts().head(3)
+            return hot
+    return pd.Series()
+
+# -----------------
 # 左側邊欄
+# -----------------
 with st.sidebar:
     st.header("⚙️ 儀表板設定")
     uploaded_file = st.file_uploader("📂 拖拉上傳最新的庫存報表 (Excel)", type=["xlsx", "xls"])
@@ -52,8 +76,20 @@ with st.sidebar:
     if not df.empty:
         st.metric(label="總追蹤 SKU 數", value=f"{len(df)} 筆")
         st.markdown("---")
+        
+        # 顯示本日熱門搜尋
+        st.header("🔥 本日熱門庫存查詢")
+        hot_queries = get_hot_queries()
+        if not hot_queries.empty:
+            for idx, (q, count) in enumerate(hot_queries.items()):
+                st.markdown(f"**Top {idx+1}:** `{q}` *(搜了 {count} 次)*")
+        else:
+            st.info("今日尚無足夠的歷史搜尋紀錄。")
+            
+        st.markdown("---")
         st.markdown("### 🧠 AI 與戰情室雙核心")
-        st.markdown("一鍵切換視角，支援數據即時視覺化、與語意化的庫存警示。")
+        st.markdown("支援數據即時視覺化、與語意化的庫存警示。")
+
 
 # ================================
 # 建立雙分頁架構 (Tabs)
@@ -69,18 +105,13 @@ with tab1:
     if df.empty:
         st.info("💡 請先從左側上傳您的 Excel 庫存報表以啟用數據戰情室。")
     else:
-        # 1. 緊急補貨清單 (Top 3)
         st.subheader("🚨 緊急補貨警示 (狀態為 Insufficient)")
-        
         if 'Status' in df.columns:
-            # 找出 Status 為 Insufficient 的商品
             insufficient_mask = df['Status'].fillna('').astype(str).str.contains('Insufficient', case=False)
             urgent_items = df[insufficient_mask]
             
             if len(urgent_items) > 0:
                 top_items = urgent_items.head(3)
-                
-                # 建立等比例卡片
                 cols = st.columns(len(top_items))
                 for i, (_, row) in enumerate(top_items.iterrows()):
                     brand = row.get('Brand', '未標示品牌')
@@ -107,9 +138,7 @@ with tab1:
             
         st.markdown("---")
         
-        # 2. 視覺化庫存水位 (Bar Chart)
         st.subheader("📊 各類別：庫存 vs 需求 對比圖")
-        
         if 'Category' in df.columns:
             all_categories = sorted(df['Category'].dropna().unique().tolist())
             if all_categories:
@@ -118,11 +147,9 @@ with tab1:
                 
                 chart_df = df[df['Category'] == selected_cat].copy()
                 
-                # 清洗數值，確保能畫成圖表
                 chart_df['FPC Demand'] = pd.to_numeric(chart_df['FPC Demand'], errors='coerce').fillna(0)
                 chart_df['FP SOH'] = pd.to_numeric(chart_df['FP SOH'], errors='coerce').fillna(0)
                 
-                # 用 Brand 群組化，把數字加起來看總體
                 grouped_df = chart_df.groupby('Brand')[['FPC Demand', 'FP SOH']].sum()
                 grouped_df = grouped_df.rename(columns={'FPC Demand': '預測需求量 (Demand)', 'FP SOH': '目前在庫存量 (SOH)'})
                 
@@ -155,6 +182,9 @@ with tab2:
                 st.markdown(message["content"])
 
     if prompt := st.chat_input("🔍 請輸入您的指令 (例如告訴我 Ariel 缺貨嗎)..."):
+        # 紀錄至熱門搜尋
+        log_query(prompt)
+        
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user", avatar="👤"):
             st.markdown(prompt)
